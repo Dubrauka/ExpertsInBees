@@ -1,0 +1,14 @@
+SCD41
+https://sensirion.com/products/catalog/SCD41
+https://sensirion.com/media/documents/48C4B7FB/67FE0194/CD_DS_SCD4x_Datasheet_D1.pdf
+
+PAV3015
+https://wiki.dfrobot.com/sen0639/#tech_specs
+https://www.mouser.dk/pdfDocs/pav3000datasheet.pdf
+
+LIS2DH
+https://www.farnell.com/datasheets/3161968.pdf
+https://github.com/DFRobot/DFRobot_LIS2DH12/raw/master/Doc/LIS2DH12%20Datasheet.pdf
+
+ADC
+https://cdn.sparkfun.com/datasheets/Sensors/ForceFlex/hx711_english.pdf
