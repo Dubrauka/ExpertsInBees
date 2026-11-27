@@ -36,15 +36,25 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <Arduino.h>
+//CO2 Temp and Relative humidity
 #include <SensirionI2cScd4x.h>
 #include <Wire.h>
+//airspeed sensor
 #include "DFRobot_PAV3000.h"
+//accelerometer
+#include <Adafruit_MMA8451.h>
+#include <Adafruit_Sensor.h>
 
-// #include <Adafruit_HX711.h>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
+
+//Loadcell
+ #include <Adafruit_HX711.h>
 
 // Define the pins for the HX711 communication
-// const uint8_t DATA_PIN = 34;  // Can use any pins!
-// const uint8_t CLOCK_PIN = 35; // Can use any pins!
+ const uint8_t DATA_PIN = 34;  // Can use any pins!
+ const uint8_t CLOCK_PIN = 35; // Can use any pins!
 
 // Adafruit_HX711 hx711(DATA_PIN, CLOCK_PIN);
 // macro definitions
@@ -55,8 +65,10 @@
 #endif
 #define NO_ERROR 0
 
-SensirionI2cScd4x sensor;
-DFRobot_PAV3000 fs;
+SensirionI2cScd4x SCD41;
+DFRobot_PAV3000 AirSpeed;
+Adafruit_MMA8451 accelerometer = Adafruit_MMA8451();
+
 
 static char errorMessage[64];
 static int16_t error;
@@ -73,10 +85,11 @@ void setup() {
     while (!Serial) {
         delay(100);
     }
-    Wire.begin(21,22);
-    sensor.begin(Wire, SCD41_I2C_ADDR_62);
-
-    while(!fs.setRange(AIRFLOW_RANGE_15_MPS, 21, 22)){
+    Wire.setPins(21,22);
+    Wire.begin();
+    //SCD41.begin(Wire, SCD41_I2C_ADDR_62);
+    SCD41.begin(Wire, SCD41_I2C_ADDR_62);
+    while(!AirSpeed.setRange(AIRFLOW_RANGE_15_MPS)){
         Serial.println("Device init error");
         delay(100);
     }
@@ -84,26 +97,26 @@ void setup() {
     uint64_t serialNumber = 0;
     delay(30);
     // Ensure sensor is in clean state
-    error = sensor.wakeUp();
+    error = SCD41.wakeUp();
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute wakeUp(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
         Serial.println(errorMessage);
     }
-    error = sensor.stopPeriodicMeasurement();
+    error = SCD41.stopPeriodicMeasurement();
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
         Serial.println(errorMessage);
     }
-    error = sensor.reinit();
+    error = SCD41.reinit();
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute reinit(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
         Serial.println(errorMessage);
     }
     // Read out information about the sensor
-    error = sensor.getSerialNumber(serialNumber);
+    error = SCD41.getSerialNumber(serialNumber);
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute getSerialNumber(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
@@ -114,29 +127,37 @@ void setup() {
     PrintUint64(serialNumber);
     Serial.println();
     //
-    // If temperature offset and/or sensor altitude compensation
+    // If temperature ofAirSpeedet and/or sensor altitude compensation
     // is required, you should call the respective functions here.
     // Check out the header file for the function definitions.
     // Start periodic measurements (5sec interval)
-    error = sensor.startPeriodicMeasurement();
+    error = SCD41.startPeriodicMeasurement();
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute startPeriodicMeasurement(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
         Serial.println(errorMessage);
         return;
     }
+    if (!accelerometer.begin()) {
+    Serial.println("Couldnt start");
+    while (1);
+    }
+      accelerometer.setRange(MMA8451_RANGE_2_G);
+  
+      Serial.print("Range = "); Serial.print(2 << accelerometer.getRange());  
+      Serial.println("G");
     //
     // If low-power mode is required, switch to the low power
     // measurement function instead of the standard measurement
     // function above. Check out the header file for the definition.
     // For SCD41, you can also check out the single shot measurement example.
     //
-    /* for (uint8_t t=0; t<3; t++) {
+    for (uint8_t t=0; t<3; t++) {
     hx711.tareA(hx711.readChannelRaw(CHAN_A_GAIN_128));
     hx711.tareA(hx711.readChannelRaw(CHAN_A_GAIN_128));
     hx711.tareB(hx711.readChannelRaw(CHAN_B_GAIN_32));
     hx711.tareB(hx711.readChannelRaw(CHAN_B_GAIN_32));
-    } */
+    } 
 }
 
 void loop() {
@@ -149,7 +170,7 @@ void loop() {
     // Slow down the sampling to 0.2Hz.
     //
     delay(5000);
-    error = sensor.getDataReadyStatus(dataReady);
+    error = SCD41.getDataReadyStatus(dataReady);
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute getDataReadyStatus(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
@@ -158,7 +179,7 @@ void loop() {
     }
     while (!dataReady) {
         delay(100);
-        error = sensor.getDataReadyStatus(dataReady);
+        error = SCD41.getDataReadyStatus(dataReady);
         if (error != NO_ERROR) {
             Serial.print("Error trying to execute getDataReadyStatus(): ");
             errorToString(error, errorMessage, sizeof errorMessage);
@@ -171,7 +192,7 @@ void loop() {
     // is required, you should call the respective functions here.
     // Check out the header file for the function definition.
     error =
-        sensor.readMeasurement(co2Concentration, temperature, relativeHumidity);
+        SCD41.readMeasurement(co2Concentration, temperature, relativeHumidity);
     if (error != NO_ERROR) {
         Serial.print("Error trying to execute readMeasurement(): ");
         errorToString(error, errorMessage, sizeof errorMessage);
@@ -193,13 +214,20 @@ void loop() {
     // Serial.println(weightA128);
     // Serial.println("reading of accel in x:67m/s^2");
     // Serial.println("wind speed:42m/s");
-    
-    Serial.print("PAV3000 Readings \tRaw: ");
-    Serial.print(fs.readRaw()); 
-    
-    Serial.print("\tm/s: ");
-    Serial.print(fs.readMeterPerSec()); 
-    
-    Serial.print("\tmph: ");
-    Serial.println(fs.readMilePerHour()); 
+    Serial.print("air speed:");
+    Serial.println(AirSpeed.readMeterPerSec());
+
+    accelerometer.read();
+  
+
+  /* Get a new sensor event */ 
+  sensors_event_t event; 
+  accelerometer.getEvent(&event);
+
+  /* Display the results (acceleration is measured in m/s^2) */
+  Serial.print("X:"); Serial.print(event.acceleration.x); Serial.print("");
+  Serial.print("Y:"); Serial.print(event.acceleration.y); Serial.print("");
+  Serial.print("Z:"); Serial.print(event.acceleration.z); Serial.print("");
+  Serial.println("m/s^2 ");
+
 }
